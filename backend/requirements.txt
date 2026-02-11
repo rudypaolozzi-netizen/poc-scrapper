@@ -1,0 +1,7 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+playwright>=1.43
+httpx[http2]>=0.27
+beautifulsoup4>=4.12
+tenacity>=8.2
+python-multipart>=0.0.9
