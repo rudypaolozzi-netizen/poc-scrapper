@@ -132,81 +132,181 @@ async def run_scraper(args, queue=None):
         logger.setLevel(logging.INFO)
 
     try:
-
-    if args.source == "maps":
-        search_query = f"{args.sector} {args.city}"
-    else:
-        search_query = args.sector
-        
-    logger.info(f"Démarrage de la recherche ({args.source}) pour : '{search_query}' (Objectif: {args.limit} résultats)")
-
-    results = []
-    found_emails_count = 0
-    processed_websites = set()
-    
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            viewport={'width': 1280, 'height': 800},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-            locale="fr-FR"
-        )
-        page = await context.new_page()
-        
         if args.source == "maps":
-            url = f"https://www.google.com/maps/search/{search_query.replace(' ', '+')}"
-            await page.goto(url)
-            await asyncio.sleep(4)
-            await handle_cookies(page)
+            search_query = f"{args.sector} {args.city}"
+        else:
+            search_query = args.sector
             
-            feed_selectors = ['div[role="feed"]', 'div[aria-label^="Résultats pour"]', 'div.m67q6026', 'div[role="main"]']
-            feed_selector = None
-            for selector in feed_selectors:
-                try:
-                    await page.wait_for_selector(selector, timeout=8000)
-                    feed_selector = selector
-                    break
-                except:
-                    continue
-            
-            if not feed_selector:
-                logger.error("Impossible de trouver le flux de résultats.")
-                await browser.close()
-                return
+        logger.info(f"Démarrage de la recherche ({args.source}) pour : '{search_query}' (Objectif: {args.limit} résultats)")
 
-            async with httpx.AsyncClient(http2=True, verify=False, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0"}) as client:
-                for iteration in range(20):
-                    if found_emails_count >= args.limit:
-                        break
-                    
+        results = []
+        found_emails_count = 0
+        processed_websites = set()
+        
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
+                viewport={'width': 1280, 'height': 800},
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                locale="fr-FR"
+            )
+            page = await context.new_page()
+            
+            if args.source == "maps":
+                url = f"https://www.google.com/maps/search/{search_query.replace(' ', '+')}"
+                await page.goto(url)
+                await asyncio.sleep(4)
+                await handle_cookies(page)
+                
+                feed_selectors = ['div[role="feed"]', 'div[aria-label^="Résultats pour"]', 'div.m67q6026', 'div[role="main"]']
+                feed_selector = None
+                for selector in feed_selectors:
                     try:
-                        await page.locator(feed_selector).evaluate("el => el.scrollTop += 2000")
+                        await page.wait_for_selector(selector, timeout=8000)
+                        feed_selector = selector
+                        break
                     except:
-                        await page.mouse.wheel(0, 2000)
-                    await asyncio.sleep(3)
-                    
-                    cards = await page.locator('div[role="article"]').all()
-                    for card in cards:
+                        continue
+                
+                if not feed_selector:
+                    logger.error("Impossible de trouver le flux de résultats.")
+                    await browser.close()
+                    return
+
+                async with httpx.AsyncClient(http2=True, verify=False, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0"}) as client:
+                    for iteration in range(20):
                         if found_emails_count >= args.limit:
                             break
+                        
                         try:
-                            await card.click()
-                            await asyncio.sleep(2)
+                            await page.locator(feed_selector).evaluate("el => el.scrollTop += 2000")
+                        except:
+                            await page.mouse.wheel(0, 2000)
+                        await asyncio.sleep(3)
+                        
+                        cards = await page.locator('div[role="article"]').all()
+                        for card in cards:
+                            if found_emails_count >= args.limit:
+                                break
+                            try:
+                                await card.click()
+                                await asyncio.sleep(2)
+                                
+                                nom_elem = page.locator('h1.DUwDvf')
+                                if await nom_elem.count() == 0: continue
+                                nom = await nom_elem.text_content()
+                                
+                                website_locator = page.locator('a[data-item-id="authority"]')
+                                website = ""
+                                if await website_locator.count() > 0:
+                                    website = await website_locator.get_attribute("href")
+                                
+                                if website and website not in processed_websites:
+                                    processed_websites.add(website)
+                                    contacts = await extract_contact_info_from_website(client, website)
+                                    if contacts["email"]:
+                                        logger.info(f"TROUVÉ: {nom} -> {contacts['email']} / {contacts['telephone']}")
+                                        results.append({"nom": nom, "website": website, "email": contacts["email"], "telephone": contacts["telephone"]})
+                                        found_emails_count += 1
+                                        
+                                        with open(OUTPUT_FILE, 'w', newline='', encoding='utf-8') as f:
+                                            writer = csv.DictWriter(f, fieldnames=["nom", "website", "email", "telephone"])
+                                            writer.writeheader()
+                                            writer.writerows(results)
+                                        
+                                        if queue:
+                                            queue.put_nowait({
+                                                "type": "result",
+                                                "data": {"nom": nom, "website": website, "email": contacts["email"], "telephone": contacts["telephone"]}
+                                            })
+                            except:
+                                continue
+            else:
+                # LinkedIn Source via DuckDuckGo HTML (httpx, pas de CAPTCHA)
+                from urllib.parse import unquote, urlparse, parse_qs
+                
+                query = f"linkedin company {search_query}"
+                ddg_url = f"https://html.duckduckgo.com/html/?q={query.replace(' ', '+')}"
+                logger.info(f"Recherche LinkedIn via DuckDuckGo HTML : '{query}'")
+                
+                linkedin_urls = []
+                try:
+                    ddg_response = httpx.get(ddg_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}, follow_redirects=True, timeout=15)
+                    ddg_soup = BeautifulSoup(ddg_response.text, 'html.parser')
+                    
+                    for a_tag in ddg_soup.find_all('a', href=True):
+                        href = a_tag['href']
+                        # Extraire l'URL réelle depuis les redirections DDG
+                        if 'uddg=' in href:
+                            actual_url = unquote(href.split('uddg=')[1].split('&')[0])
+                        else:
+                            actual_url = href
+                        
+                        if 'linkedin.com/company/' in actual_url:
+                            title = a_tag.get_text(strip=True) or "Inconnu"
+                            if actual_url not in [u["url"] for u in linkedin_urls]:
+                                logger.info(f"LinkedIn Company trouvée : {title} -> {actual_url}")
+                                linkedin_urls.append({"url": actual_url, "title": title})
+                except Exception as e:
+                    logger.error(f"Erreur DuckDuckGo HTML : {e}")
+                
+                logger.info(f"{len(linkedin_urls)} pages LinkedIn Company trouvées.")
+                
+                async with httpx.AsyncClient(http2=True, verify=False, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0"}) as client:
+                    for item in linkedin_urls:
+                        if found_emails_count >= args.limit:
+                            break
+                        
+                        href = item["url"]
+                        nom = item["title"].split(" |")[0].split(" -")[0].strip()  # Nettoyage du titre
+                        
+                        try:
+                            # Visite la page LinkedIn Company avec Playwright
+                            logger.info(f"Visite de la page LinkedIn : {href}")
+                            await page.goto(href, timeout=15000)
+                            await asyncio.sleep(3)
                             
-                            nom_elem = page.locator('h1.DUwDvf')
-                            if await nom_elem.count() == 0: continue
-                            nom = await nom_elem.text_content()
+                            # Extraction du nom depuis la page (plus fiable)
+                            nom_elem = page.locator('h1')
+                            if await nom_elem.count() > 0:
+                                page_nom = await nom_elem.first.text_content()
+                                if page_nom and page_nom.strip():
+                                    nom = page_nom.strip()
                             
-                            website_locator = page.locator('a[data-item-id="authority"]')
+                            # Extraction du site web depuis LinkedIn
                             website = ""
-                            if await website_locator.count() > 0:
-                                website = await website_locator.get_attribute("href")
+                            # Chercher les liens externes (pas linkedin.com)
+                            all_links = await page.locator('a[href^="http"]').all()
+                            for a_link in all_links:
+                                a_href = await a_link.get_attribute("href")
+                                if a_href and "linkedin.com" not in a_href and "microsoft.com" not in a_href:
+                                    a_text = await a_link.text_content() or ""
+                                    if any(kw in a_text.lower() for kw in ["site", "website", "visiter", "visit"]):
+                                        website = a_href
+                                        break
+                            
+                            # Si pas trouvé via le texte, chercher dans le HTML brut
+                            if not website:
+                                page_content = await page.content()
+                                # Chercher des URLs dans le contenu qui ne sont pas linkedin
+                                ext_urls = re.findall(r'https?://(?!.*linkedin\.com)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:/[^\s"<]*)?', page_content)
+                                # Filtrer les URLs utiles
+                                for ext_url in ext_urls:
+                                    if any(d in ext_url for d in ["google.com", "microsoft.com", "facebook.com", "twitter.com", "youtube.com", "cdn.", "static."]):
+                                        continue
+                                    website = ext_url.split('"')[0].split("'")[0]
+                                    break
+                            
+                            if website:
+                                logger.info(f"Site web trouvé pour {nom} : {website}")
+                            else:
+                                logger.warning(f"Aucun site web trouvé pour {nom}")
                             
                             if website and website not in processed_websites:
                                 processed_websites.add(website)
                                 contacts = await extract_contact_info_from_website(client, website)
                                 if contacts["email"]:
-                                    logger.info(f"TROUVÉ: {nom} -> {contacts['email']} / {contacts['telephone']}")
+                                    logger.info(f"TROUVÉ (via LinkedIn): {nom} -> {contacts['email']} / {contacts['telephone']}")
                                     results.append({"nom": nom, "website": website, "email": contacts["email"], "telephone": contacts["telephone"]})
                                     found_emails_count += 1
                                     
@@ -220,119 +320,18 @@ async def run_scraper(args, queue=None):
                                             "type": "result",
                                             "data": {"nom": nom, "website": website, "email": contacts["email"], "telephone": contacts["telephone"]}
                                         })
-                        except:
+                        except Exception as e:
+                            logger.warning(f"Erreur sur LinkedIn ({nom}): {e}")
                             continue
-        else:
-            # LinkedIn Source via DuckDuckGo HTML (httpx, pas de CAPTCHA)
-            from urllib.parse import unquote, urlparse, parse_qs
-            
-            query = f"linkedin company {search_query}"
-            ddg_url = f"https://html.duckduckgo.com/html/?q={query.replace(' ', '+')}"
-            logger.info(f"Recherche LinkedIn via DuckDuckGo HTML : '{query}'")
-            
-            linkedin_urls = []
-            try:
-                ddg_response = httpx.get(ddg_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}, follow_redirects=True, timeout=15)
-                ddg_soup = BeautifulSoup(ddg_response.text, 'html.parser')
-                
-                for a_tag in ddg_soup.find_all('a', href=True):
-                    href = a_tag['href']
-                    # Extraire l'URL réelle depuis les redirections DDG
-                    if 'uddg=' in href:
-                        actual_url = unquote(href.split('uddg=')[1].split('&')[0])
-                    else:
-                        actual_url = href
-                    
-                    if 'linkedin.com/company/' in actual_url:
-                        title = a_tag.get_text(strip=True) or "Inconnu"
-                        if actual_url not in [u["url"] for u in linkedin_urls]:
-                            logger.info(f"LinkedIn Company trouvée : {title} -> {actual_url}")
-                            linkedin_urls.append({"url": actual_url, "title": title})
-            except Exception as e:
-                logger.error(f"Erreur DuckDuckGo HTML : {e}")
-            
-            logger.info(f"{len(linkedin_urls)} pages LinkedIn Company trouvées.")
-            
-            async with httpx.AsyncClient(http2=True, verify=False, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0"}) as client:
-                for item in linkedin_urls:
-                    if found_emails_count >= args.limit:
-                        break
-                    
-                    href = item["url"]
-                    nom = item["title"].split(" |")[0].split(" -")[0].strip()  # Nettoyage du titre
-                    
-                    try:
-                        # Visite la page LinkedIn Company avec Playwright
-                        logger.info(f"Visite de la page LinkedIn : {href}")
-                        await page.goto(href, timeout=15000)
-                        await asyncio.sleep(3)
-                        
-                        # Extraction du nom depuis la page (plus fiable)
-                        nom_elem = page.locator('h1')
-                        if await nom_elem.count() > 0:
-                            page_nom = await nom_elem.first.text_content()
-                            if page_nom and page_nom.strip():
-                                nom = page_nom.strip()
-                        
-                        # Extraction du site web depuis LinkedIn
-                        website = ""
-                        # Chercher les liens externes (pas linkedin.com)
-                        all_links = await page.locator('a[href^="http"]').all()
-                        for a_link in all_links:
-                            a_href = await a_link.get_attribute("href")
-                            if a_href and "linkedin.com" not in a_href and "microsoft.com" not in a_href:
-                                a_text = await a_link.text_content() or ""
-                                if any(kw in a_text.lower() for kw in ["site", "website", "visiter", "visit"]):
-                                    website = a_href
-                                    break
-                        
-                        # Si pas trouvé via le texte, chercher dans le HTML brut
-                        if not website:
-                            page_content = await page.content()
-                            # Chercher des URLs dans le contenu qui ne sont pas linkedin
-                            ext_urls = re.findall(r'https?://(?!.*linkedin\.com)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:/[^\s"<]*)?', page_content)
-                            # Filtrer les URLs utiles
-                            for ext_url in ext_urls:
-                                if any(d in ext_url for d in ["google.com", "microsoft.com", "facebook.com", "twitter.com", "youtube.com", "cdn.", "static."]):
-                                    continue
-                                website = ext_url.split('"')[0].split("'")[0]
-                                break
-                        
-                        if website:
-                            logger.info(f"Site web trouvé pour {nom} : {website}")
-                        else:
-                            logger.warning(f"Aucun site web trouvé pour {nom}")
-                        
-                        if website and website not in processed_websites:
-                            processed_websites.add(website)
-                            contacts = await extract_contact_info_from_website(client, website)
-                            if contacts["email"]:
-                                logger.info(f"TROUVÉ (via LinkedIn): {nom} -> {contacts['email']} / {contacts['telephone']}")
-                                results.append({"nom": nom, "website": website, "email": contacts["email"], "telephone": contacts["telephone"]})
-                                found_emails_count += 1
-                                
-                                with open(OUTPUT_FILE, 'w', newline='', encoding='utf-8') as f:
-                                    writer = csv.DictWriter(f, fieldnames=["nom", "website", "email", "telephone"])
-                                    writer.writeheader()
-                                    writer.writerows(results)
-                                
-                                if queue:
-                                    queue.put_nowait({
-                                        "type": "result",
-                                        "data": {"nom": nom, "website": website, "email": contacts["email"], "telephone": contacts["telephone"]}
-                                    })
-                    except Exception as e:
-                        logger.warning(f"Erreur sur LinkedIn ({nom}): {e}")
-                        continue
 
-        await browser.close()
-        logger.info(f"Terminé. {found_emails_count} emails extraits dans {OUTPUT_FILE}.")
+            await browser.close()
+            logger.info(f"Terminé. {found_emails_count} emails extraits dans {OUTPUT_FILE}.")
 
-        if queue:
-            queue.put_nowait({
-                "type": "done", 
-                "data": {"message": f"Terminé. {found_emails_count} emails extraits.", "total": found_emails_count}
-            })
+            if queue:
+                queue.put_nowait({
+                    "type": "done", 
+                    "data": {"message": f"Terminé. {found_emails_count} emails extraits.", "total": found_emails_count}
+                })
     except Exception as e:
         logger.error(f"Erreur fatale: {e}")
         if queue:

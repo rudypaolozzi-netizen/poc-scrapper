@@ -38,7 +38,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-blue-500/30">
-      <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-8">
+      <div className="max-w-[1600px] mx-auto p-4 md:p-8 space-y-8">
         {/* Header */}
         <header className="flex justify-between items-end border-b border-slate-800/50 pb-6">
           <div>
@@ -60,9 +60,9 @@ function App() {
         )}
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start h-full">
-          {/* Left Column: Controls (4 cols) */}
-          <div className="lg:col-span-4 space-y-6 sticky top-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start h-full">
+          {/* Left Column: Controls (8 cols - Large space) */}
+          <div className="lg:col-span-8 space-y-6 sticky top-6">
             <ControlPanel onStart={startScraping} onStop={stopScraping} status={status} />
 
             <div className="hidden lg:block space-y-2">
@@ -76,8 +76,8 @@ function App() {
             </div>
           </div>
 
-          {/* Right Column: Results (8 cols) */}
-          <div className="lg:col-span-8 space-y-4">
+          {/* Right Column: Results (4 cols) */}
+          <div className="lg:col-span-4 space-y-4">
             {/* On mobile, logs might be better below? Or accessible via toggle? For now, stacking Logs above Results table on mobile */}
             <div className="lg:hidden space-y-2 mb-6">
               <h3 className="text-[10px] uppercase text-slate-500 font-bold ml-1 tracking-widest">System Logs</h3>

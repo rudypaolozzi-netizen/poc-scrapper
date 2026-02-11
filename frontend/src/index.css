@@ -1,6 +1,20 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #1E40AF;
+  --color-secondary: #1E293B;
+  --color-accent: #22C55E;
+  --color-danger: #EF4444;
+  --color-background: #0F172A;
+  --color-surface: #1E293B;
+  --color-text: #F8FAFC;
+  --color-muted: #94A3B8;
+  --color-log-bg: #0D1117;
+  --color-log-text: #4ADE80;
+
+  --font-family-sans: "Inter", "system-ui", sans-serif;
+  --font-family-mono: "Courier New", monospace;
+}
 
 @layer base {
   body {
@@ -12,15 +26,18 @@
 .custom-scrollbar::-webkit-scrollbar {
   width: 8px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: #0D1117; 
+  background: #0D1117;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #333; 
+  background: #333;
   border-radius: 4px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #555; 
+  background: #555;
 }
 
 /* Glassmorphism helpers if needed via Utility classes later */

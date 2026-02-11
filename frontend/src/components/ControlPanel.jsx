@@ -23,23 +23,30 @@ export default function ControlPanel({ onStart, onStop, status }) {
     return (
         <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-800 backdrop-blur-sm shadow-xl">
             <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                    {/* Source */}
                     <div className="flex flex-col gap-2">
                         <label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Source</label>
-                        <select
-                            name="source"
-                            value={params.source}
-                            onChange={handleChange}
-                            disabled={isRunning}
-                            className="bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition disabled:opacity-50 appearance-none cursor-pointer hover:border-slate-700"
-                        >
-                            <option value="maps">Google Maps</option>
-                            <option value="linkedin">LinkedIn</option>
-                        </select>
+                        <div className="relative">
+                            <select
+                                name="source"
+                                value={params.source}
+                                onChange={handleChange}
+                                disabled={isRunning}
+                                className="bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition disabled:opacity-50 appearance-none cursor-pointer hover:border-slate-700 w-full"
+                            >
+                                <option value="maps">Google Maps</option>
+                                <option value="linkedin">LinkedIn</option>
+                            </select>
+                            <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none opacity-50">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </div>
+                        </div>
                     </div>
 
+                    {/* Limite */}
                     <div className="flex flex-col gap-2">
-                        <label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Start Limit</label>
+                        <label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Nb. Résultats</label>
                         <input
                             type="number"
                             name="limit"
@@ -47,36 +54,38 @@ export default function ControlPanel({ onStart, onStop, status }) {
                             onChange={handleChange}
                             min="1" max="100"
                             disabled={isRunning}
-                            className="bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition disabled:opacity-50"
+                            className="bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition disabled:opacity-50 w-full font-bold text-emerald-500"
                         />
                     </div>
 
+                    {/* Métier */}
                     <div className="flex flex-col gap-2">
-                        <label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Keywords / Sector</label>
+                        <label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Métier / Fonction</label>
                         <input
                             type="text"
                             name="sector"
                             value={params.sector}
                             onChange={handleChange}
-                            placeholder="e.g. Coiffeur"
+                            placeholder="ex: Coiffeur, Directeur financier"
                             disabled={isRunning}
                             required
-                            className="bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition disabled:opacity-50 placeholder-slate-700"
+                            className="bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition disabled:opacity-50 placeholder-slate-700 w-full"
                         />
                     </div>
 
+                    {/* Ville */}
                     <div className="flex flex-col gap-2 relative group">
                         <label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold flex justify-between">
-                            City <span className="font-normal opacity-50 lowercase transition-opacity duration-300 group-hover:opacity-100 text-[10px]">(maps only)</span>
+                            Ville <span className="font-normal opacity-50 lowercase transition-opacity duration-300 group-hover:opacity-100 text-[10px]">(maps)</span>
                         </label>
                         <input
                             type="text"
                             name="city"
                             value={params.city}
                             onChange={handleChange}
-                            placeholder="e.g. Bordeaux"
+                            placeholder="ex: Clermont-Ferrand"
                             disabled={isRunning || params.source !== 'maps'}
-                            className="bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition disabled:opacity-30 disabled:cursor-not-allowed placeholder-slate-700"
+                            className="bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition disabled:opacity-30 disabled:cursor-not-allowed placeholder-slate-700 w-full"
                         />
                     </div>
                 </div>
